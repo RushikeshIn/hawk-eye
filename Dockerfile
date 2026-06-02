@@ -1,21 +1,25 @@
-# Use the official Python image as the base image
-FROM python:3
+# Slim runtime base (~150MB vs ~1.2GB for python:3)
+FROM python:3.12-slim-bookworm
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy the local requirements.txt file to the container at /app
-COPY requirements.txt /app/
-RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
+# Runtime system deps only (OCR + video). --no-install-recommends keeps apt layer small.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        tesseract-ocr \
+        libglib2.0-0 \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install the dependencies from requirements.txt
-RUN pip3 install -r requirements.txt
+COPY requirements.txt setup.py setup.cfg MANIFEST.in readme.md LICENSE CITATION.cff fingerprint.yml ./
+COPY hawk_scanner ./hawk_scanner/
+COPY assets ./assets/
 
-# Copy the local code to the container at /app
-COPY . /app/
+# headless OpenCV drops GUI libs (~200–400MB). Install deps once, then package without --no-deps duplication.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && sed 's/^opencv-python$/opencv-python-headless/' requirements.txt > requirements.docker.txt \
+    && pip install --no-cache-dir -r requirements.docker.txt \
+    && pip install --no-cache-dir --no-deps .
 
-# Install the Python package (assuming it contains a setup.py file)
-RUN pip3 install .
-
-# Run hawk_Scanner from python3 main.py
 ENTRYPOINT ["hawk_scanner"]

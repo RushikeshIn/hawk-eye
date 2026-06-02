@@ -15,15 +15,27 @@ import tempfile
 import shutil
 import os, cv2
 import tarfile
-import pkg_resources
 from concurrent.futures import ProcessPoolExecutor
 
 
 data_sources = ['s3', 'mysql', 'redis', 'firebase', 'gcs', 'fs', 'postgresql', 'mongodb', 'slack', 'couchdb', 'gdrive', 'gdrive_workspace', 'text']
 data_sources_option = ['all'] + data_sources
 
+
+def _hawk_scanner_version():
+    try:
+        from importlib.metadata import version
+        return version("hawk_scanner")
+    except Exception:
+        try:
+            import pkg_resources
+            return pkg_resources.require("hawk_scanner")[0].version
+        except Exception:
+            return "0.0.0"
+
+
 def parse_args(args=None):
-    version = pkg_resources.require("hawk_scanner")[0].version 
+    version = _hawk_scanner_version()
     parser = argparse.ArgumentParser(description='🦅 A powerful scanner to scan your Filesystem, S3, MySQL, PostgreSQL, MongoDB, Redis, Google Cloud Storage and Firebase storage for PII and sensitive data.')
     parser.add_argument('command', nargs='?', choices=data_sources_option, help='Command to execute')
     parser.add_argument('--connection', action='store', help='YAML Connection file path')

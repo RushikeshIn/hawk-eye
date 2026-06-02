@@ -7,13 +7,19 @@ from rich.console import Console
 
 console = Console()
 
-def connect_s3(args, access_key, secret_key, bucket_name):
+
+def connect_s3(args, access_key, secret_key, bucket_name, session_token=None):
     try:
-        session = boto3.Session(
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key
-        )
-        s3 = session.resource('s3')
+        kwargs = {
+            "aws_access_key_id": access_key,
+            "aws_secret_access_key": secret_key,
+        }
+        # Prefer YAML; fall back to env (Docker -e AWS_SESSION_TOKEN)
+        token = session_token or os.environ.get("AWS_SESSION_TOKEN")
+        if token:
+            kwargs["aws_session_token"] = token
+        session = boto3.Session(**kwargs)
+        s3 = session.resource("s3")
         bucket = s3.Bucket(bucket_name)
         system.print_info(args, f"Connected to S3 bucket: {bucket_name}")
         return bucket
@@ -51,19 +57,20 @@ def execute(args):
             for key, config in s3_config.items():
                 access_key = config.get('access_key')
                 secret_key = config.get('secret_key')
+                session_token = config.get('session_token') 
                 bucket_name = config.get('bucket_name')
                 exclude_patterns = config.get(key, {}).get('exclude_patterns', [])
 
                 system.print_info(args, f"Checking S3 profile: '{key}' with bucket '{bucket_name}'")
                 profile_name = key
                 if access_key and secret_key and bucket_name:
-                    bucket = connect_s3(args, access_key, secret_key, bucket_name)
+                    bucket = connect_s3(args, access_key, secret_key, bucket_name, session_token)
                     if bucket:
                         for obj in bucket.objects.all():
                             if quick_exit and len(results) >= max_matches:
                                 system.print_info(args, f"Quick exit: Found {max_matches} matches, exiting...")
                                 break
-                            
+
                             remote_etag = obj.e_tag.replace('"', '')
                             system.print_debug(args, f"Remote etag: {remote_etag}")
                             file_name = obj.key
@@ -88,7 +95,7 @@ def execute(args):
                                 file_path = f"data/s3/{remote_etag}-{file_name}"
                                 system.print_debug(args, f"Downloading file: {file_name} to {file_path}...")
                                 bucket.download_file(file_name, file_path)
-                            
+
                             matches = system.read_match_strings(args, file_path, 'google_cloud_storage')
                             if matches:
                                 for match in matches:
@@ -106,8 +113,8 @@ def execute(args):
                         system.print_error(args, f"Failed to connect to S3 bucket: {bucket_name}")
                 else:
                     system.print_error(args, f"Incomplete S3 configuration for key: {key}")
-            if config.get("cache") == False:
-                os.system("rm -rf data/s3")
+                if config.get("cache") == False:
+                    os.system("rm -rf data/s3")
         else:
             system.print_error(args, "No S3 connection details found in connection.yml")
     else:
